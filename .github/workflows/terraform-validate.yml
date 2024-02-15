@@ -1,20 +1,22 @@
-name: Terraform Validation
-
+name: Terraform Workflow
 on:
-  pull_request:
-    branches:
-      - main
+    pull_request:
+        branches:
+        - main
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
-    name: Validate Terraform module
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: terraform validate
-        uses: dflook/terraform-validate@v1
-        with:
-         path: infra
+    terraform:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout
+          uses: actions/checkout@v2
+        - name: Setup Terraform
+          uses: hashicorp/setup-terraform@v1
+          with:
+            terraform_version: 1.7.3
+        - name: Change Directory
+          run: cd infra
+        - name: Terraform Init
+          run: terraform init
+        - name: Terraform Validate
+          run: terraform validate
