@@ -1,5 +1,5 @@
 # Create VPC
-resource "google_compute_network" "gcp_vpc" {
+resourc "google_compute_network" "gcp_vpc" {
   name                    = "my-vpc"
   routing_mode            = var.gcp_route_mode
   delete_default_routes_on_create = true
