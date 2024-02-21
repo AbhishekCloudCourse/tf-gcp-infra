@@ -24,7 +24,7 @@ resource "google_compute_subnetwork" "db_subnet" {
    region = var.gcp_region
 }
 
-# Create Route for Internet Gateway
+# Create Route for Internet Gatewa
 resource "google_compute_route" "internet_route" {
     count = length(var.gcp_vpc)
     name = var.gcp_vpc[count.index].subnet_1_custom_route
