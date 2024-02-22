@@ -21,6 +21,11 @@ variable "gcp_vpc" {
       subnet_name_2         = string
       subnet_2_cidr         = string
       subnet_1_custom_route = string
+      instance_size         = number
+      instance_type         = string
+      image_address         = string
+      allowed_ports         = list(number)
+      instance_zone         = string
     })
   )
 }

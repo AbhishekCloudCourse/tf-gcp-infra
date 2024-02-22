@@ -32,3 +32,44 @@ resource "google_compute_route" "internet_route" {
     dest_range = "0.0.0.0/0"
     next_hop_gateway = "default-internet-gateway"
 }
+
+resource "google_compute_firewall" "default" {
+  count   = length(var.gcp_vpc)
+  name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fw"
+  network = google_compute_network.vpc[count.index].id
+
+  allow {
+    protocol = "tcp"
+    ports    = var.gcp_vpc[count.index].allowed_ports  // Your application listens to port 8000
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
+resource "google_compute_instance" "webapp_instance" {
+  count = length(var.gcp_vpc)
+  provider = google
+  name = "compute-instance-${count.index}"
+  machine_type = "e2-medium"
+  network_interface {
+    network = google_compute_network.vpc[count.index].id
+    subnetwork  = google_compute_subnetwork.webapp_subnet[count.index].id
+    access_config{
+      
+    }
+  }
+
+  boot_disk {
+    initialize_params {
+      size  = var.gcp_vpc[count.index].instance_size
+      type  = var.gcp_vpc[count.index].instance_type
+      image = var.gcp_vpc[count.index].image_address
+    }
+  }
+  # Some changes require full VM restarts
+  # consider disabling this flag in production
+  #   depending on your needs
+  zone = var.gcp_vpc[count.index].instance_zone
+  allow_stopping_for_update = true
+
+}
