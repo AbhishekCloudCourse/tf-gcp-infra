@@ -33,6 +33,7 @@ resource "google_compute_route" "internet_route" {
     next_hop_gateway = "default-internet-gateway"
 }
 
+
 resource "google_compute_firewall" "allow_http" {
   count   = length(var.gcp_vpc)
   name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fw"
@@ -85,6 +86,7 @@ resource "google_compute_instance" "webapp_instance" {
   #   depending on your needs
   zone = var.gcp_vpc[count.index].instance_zone
   allow_stopping_for_update = true
+
 
    tags = ["webapp-firewall"]
 
