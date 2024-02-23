@@ -33,7 +33,7 @@ resource "google_compute_route" "internet_route" {
     next_hop_gateway = "default-internet-gateway"
 }
 
-resource "google_compute_firewall" "default" {
+resource "google_compute_firewall" "allow_http" {
   count   = length(var.gcp_vpc)
   name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fw"
   network = google_compute_network.vpc[count.index].id
@@ -42,7 +42,21 @@ resource "google_compute_firewall" "default" {
     protocol = "tcp"
     ports    = var.gcp_vpc[count.index].allowed_ports  // Your application listens to port 8000
   }
+  direction = "INGRESS"
+  source_ranges = ["0.0.0.0/0"]
+  target_tags = ["webapp-firewall"]
+}
 
+resource "google_compute_firewall" "deny_ssh" {
+  count   = length(var.gcp_vpc)
+  name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fk"
+  network = google_compute_network.vpc[count.index].id
+
+  deny {
+    protocol = "tcp"
+    ports    = ["22"]  
+  }
+  direction = "INGRESS"
   source_ranges = ["0.0.0.0/0"]
 }
 
@@ -55,7 +69,7 @@ resource "google_compute_instance" "webapp_instance" {
     network = google_compute_network.vpc[count.index].id
     subnetwork  = google_compute_subnetwork.webapp_subnet[count.index].id
     access_config{
-      
+
     }
   }
 
@@ -71,5 +85,7 @@ resource "google_compute_instance" "webapp_instance" {
   #   depending on your needs
   zone = var.gcp_vpc[count.index].instance_zone
   allow_stopping_for_update = true
+
+   tags = ["webapp-firewall"]
 
 }
