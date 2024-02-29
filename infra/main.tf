@@ -48,18 +48,18 @@ resource "google_compute_firewall" "allow_http" {
   target_tags = ["webapp-firewall"]
 }
 
-# resource "google_compute_firewall" "deny_ssh" {
-#   count   = length(var.gcp_vpc)
-#   name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fk"
-#   network = google_compute_network.vpc[count.index].id
+resource "google_compute_firewall" "deny_ssh" {
+  count   = length(var.gcp_vpc)
+  name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fk"
+  network = google_compute_network.vpc[count.index].id
 
-#   deny {
-#     protocol = "tcp"
-#     ports    = ["22"]  
-#   }
-#   direction = "INGRESS"
-#   source_ranges = ["0.0.0.0/0"]
-# }
+  deny {
+    protocol = "tcp"
+    ports    = ["22"]  
+  }
+  direction = "INGRESS"
+  source_ranges = ["0.0.0.0/0"]
+}
 
 resource "google_compute_instance" "webapp_instance" {
   count = length(var.gcp_vpc)
