@@ -26,6 +26,9 @@ variable "gcp_vpc" {
       image_address         = string
       allowed_ports         = list(number)
       instance_zone         = string
+      private_ip_address    = string
+      db_username           = string
+      database_name         = string
     })
   )
 }
