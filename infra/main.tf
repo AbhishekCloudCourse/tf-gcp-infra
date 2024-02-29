@@ -48,18 +48,18 @@ resource "google_compute_firewall" "allow_http" {
   target_tags = ["webapp-firewall"]
 }
 
-resource "google_compute_firewall" "deny_ssh" {
-  count   = length(var.gcp_vpc)
-  name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fk"
-  network = google_compute_network.vpc[count.index].id
+# resource "google_compute_firewall" "deny_ssh" {
+#   count   = length(var.gcp_vpc)
+#   name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fk"
+#   network = google_compute_network.vpc[count.index].id
 
-  deny {
-    protocol = "tcp"
-    ports    = ["22"]  
-  }
-  direction = "INGRESS"
-  source_ranges = ["0.0.0.0/0"]
-}
+#   deny {
+#     protocol = "tcp"
+#     ports    = ["22"]  
+#   }
+#   direction = "INGRESS"
+#   source_ranges = ["0.0.0.0/0"]
+# }
 
 resource "google_compute_instance" "webapp_instance" {
   count = length(var.gcp_vpc)
@@ -81,6 +81,13 @@ resource "google_compute_instance" "webapp_instance" {
       image = var.gcp_vpc[count.index].image_address
     }
   }
+
+  metadata = {
+    db-host     = google_sql_database_instance.instance[count.index].first_ip_address
+    db-username = var.gcp_vpc[count.index].db_username
+    db-password = random_password.password.result
+    db-name = var.gcp_vpc[count.index].database_name
+  }
   # Some changes require full VM restarts
   # consider disabling this flag in production
   #   depending on your needs
@@ -90,4 +97,75 @@ resource "google_compute_instance" "webapp_instance" {
 
    tags = ["webapp-firewall"]
 
+}
+
+
+resource "google_compute_global_address" "compute_address" {
+  count = length(var.gcp_vpc)
+  provider     = google-beta
+  project      = google_compute_network.vpc[count.index].project
+  name         = "globel-address-${count.index}"
+  ip_version   = "IPV4"
+  address_type = "INTERNAL"
+  purpose = "VPC_PEERING"
+  network      = google_compute_network.vpc[count.index].id
+  prefix_length = 20
+}
+# [END compute_internal_ip_private_access]
+
+# [START compute_forwarding_rule_private_access]
+resource "google_service_networking_connection" "private_vpc_connection" {
+  count = length(var.gcp_vpc)
+  provider = google-beta
+  network                 = google_compute_network.vpc[count.index].id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.compute_address[count.index].name]
+
+  deletion_policy = "ABANDON"
+}
+
+resource "random_id" "db_name_suffix" {
+  byte_length = 4
+}
+
+resource "google_sql_database_instance" "instance" {
+  provider = google-beta
+  count = length(var.gcp_vpc)
+  name             = "private-instance-blue"
+  region           = "us-central1"
+  database_version = "POSTGRES_15"
+  deletion_protection = false
+  depends_on = [google_service_networking_connection.private_vpc_connection[0]]
+
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled                                  = false
+      private_network                               = google_compute_network.vpc[count.index].id
+      enable_private_path_for_google_cloud_services = true
+    }
+    disk_size = 100
+    disk_type = "PD_SSD"
+    availability_type = "REGIONAL"
+  }
+
+
+}
+
+resource "random_password" "password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+resource "google_sql_database" "database" {
+  count = length(var.gcp_vpc)
+  name     = var.gcp_vpc[count.index].database_name
+  instance = google_sql_database_instance.instance[count.index].name
+}
+
+resource "google_sql_user" "users" {
+  count = length(var.gcp_vpc)
+  name     = var.gcp_vpc[count.index].db_username
+  instance = google_sql_database_instance.instance[count.index].name
+  password = random_password.password.result
 }
