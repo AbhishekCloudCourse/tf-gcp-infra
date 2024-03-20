@@ -82,6 +82,8 @@ resource "google_compute_instance" "webapp_instance" {
     }
   }
 
+  metadata_startup_script = "${file("./startup.sh")}"
+
   metadata = {
     db-host     = google_sql_database_instance.instance[count.index].first_ip_address
     db-username = var.gcp_vpc[count.index].db_username
@@ -94,6 +96,12 @@ resource "google_compute_instance" "webapp_instance" {
   zone = var.gcp_vpc[count.index].instance_zone
   allow_stopping_for_update = true
 
+  service_account {
+    email  = google_service_account.logging.email
+    scopes = ["cloud-platform"]
+  }
+
+  depends_on = [google_service_account.logging]
 
    tags = ["webapp-firewall"]
 
@@ -131,7 +139,7 @@ resource "random_id" "db_name_suffix" {
 resource "google_sql_database_instance" "instance" {
   provider = google-beta
   count = length(var.gcp_vpc)
-  name             = "private-instance-blue"
+  name             = var.gcp_vpc[count.index].sql_database_name
   region           = "us-central1"
   database_version = "POSTGRES_15"
   deletion_protection = false
@@ -168,4 +176,38 @@ resource "google_sql_user" "users" {
   name     = var.gcp_vpc[count.index].db_username
   instance = google_sql_database_instance.instance[count.index].name
   password = random_password.password.result
+}
+
+
+resource "google_dns_record_set" "a" {
+  count        = length(var.gcp_vpc)
+  name         = "abhishekforce.me."
+  managed_zone = "abhishekforce" # Replace with your actual managed zone name
+  type         = "A"
+  ttl          = 300
+
+  rrdatas = ["${google_compute_instance.webapp_instance[0].network_interface.0.access_config.0.nat_ip}"]
+
+  depends_on = [google_compute_instance.webapp_instance[0]]
+}
+
+resource "google_service_account" "logging" {
+  account_id   = "logging-service-account"
+  display_name = "Logging Service Account"
+  description  = "This service account is used for logging."
+}
+
+
+resource "google_project_iam_member" "member1" {
+  count = length(var.gcp_vpc)
+  project     = google_compute_network.vpc[count.index].project
+  role    = "roles/logging.admin"
+  member  = "serviceAccount:${google_service_account.logging.email}"
+}
+
+resource "google_project_iam_member" "member2" {
+  count = length(var.gcp_vpc)
+  project     = google_compute_network.vpc[count.index].project
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.logging.email}"
 }

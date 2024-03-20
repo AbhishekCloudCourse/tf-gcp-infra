@@ -29,6 +29,7 @@ variable "gcp_vpc" {
       private_ip_address    = string
       db_username           = string
       database_name         = string
+      sql_database_name     = string
     })
   )
 }
