@@ -128,7 +128,10 @@ resource "google_service_networking_connection" "private_vpc_connection" {
   network                 = google_compute_network.vpc[count.index].id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.compute_address[count.index].name]
-
+  depends_on = [ 
+    google_compute_network.vpc[0],
+    google_compute_global_address.compute_address[0] 
+    ]
   deletion_policy = "ABANDON"
 }
 
@@ -144,7 +147,7 @@ resource "google_sql_database_instance" "instance" {
   database_version = "POSTGRES_15"
   deletion_protection = false
   depends_on = [google_service_networking_connection.private_vpc_connection[0]]
-
+  
   settings {
     tier = "db-f1-micro"
     ip_configuration {
@@ -156,7 +159,7 @@ resource "google_sql_database_instance" "instance" {
     disk_type = "PD_SSD"
     availability_type = "REGIONAL"
   }
-
+  
 
 }
 
@@ -210,4 +213,116 @@ resource "google_project_iam_member" "member2" {
   project     = google_compute_network.vpc[count.index].project
   role    = "roles/monitoring.metricWriter"
   member  = "serviceAccount:${google_service_account.logging.email}"
+}
+
+resource "google_project_iam_binding" "pubsub_publisher" {
+  count   = length(var.gcp_vpc)
+  project = google_compute_network.vpc[count.index].project
+  role    = "roles/pubsub.publisher"
+  members = [
+    "serviceAccount:${google_service_account.logging.email}"
+  ]
+}
+
+resource "google_pubsub_topic" "email" {
+  name = "verify_email"
+
+  labels = {
+  purpose = "email_verification"
+}
+
+  message_retention_duration = "604800s"
+}
+
+resource "random_string" "string-generator" {
+  length           = 16
+  special          = false
+}
+
+resource "google_storage_bucket" "email-bucket" {
+  name     = "bucket-3fa85f64-5717-4562-b3fc-2c963f66afa6-1629479812345"
+  location = "US"
+  force_destroy = true
+
+}
+
+resource "google_storage_bucket_object" "archive" {
+  name   = "email-server.zip"
+  bucket = google_storage_bucket.email-bucket.name
+  source = "C:\\Users\\abhis\\OneDrive\\Documents\\prep\\email-server.zip"
+}
+
+
+
+
+resource "google_cloudfunctions2_function" "email-server" {
+  name        = "run-email-server"
+  location    = "us-east1"
+  description = "a new function"
+
+  build_config {
+    runtime     = "nodejs16"
+    entry_point = "consumeUserMessage" # Set the entry point
+ 
+    source {
+      storage_source {
+        bucket = google_storage_bucket.email-bucket.name
+        object = google_storage_bucket_object.archive.name
+      }
+    }
+  }
+  
+  service_config {
+    max_instance_count = 3
+    min_instance_count = 2
+    available_memory   = "256M"
+    timeout_seconds    = 60
+    ingress_settings               = "ALLOW_INTERNAL_ONLY"
+    all_traffic_on_latest_revision = true
+    service_account_email          = "562779682699-compute@developer.gserviceaccount.com"
+    environment_variables = {
+        DB_PASSWORD = random_password.password.result
+    }
+    vpc_connector = google_vpc_access_connector.connector[0].name
+     vpc_connector_egress_settings  = "PRIVATE_RANGES_ONLY"
+
+  }
+
+  event_trigger {
+    trigger_region = "us-east1"
+    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic   = google_pubsub_topic.email.id
+    retry_policy   = "RETRY_POLICY_RETRY"
+  }
+
+  
+
+}
+
+resource "google_compute_network_peering_routes_config" "peering_routes" {
+  count = length(var.gcp_vpc)
+  peering = google_service_networking_connection.private_vpc_connection[0].peering
+  network = google_compute_network.vpc[count.index].id
+
+  import_custom_routes = true
+  export_custom_routes = true
+
+  depends_on = [
+    google_compute_network.vpc[0],
+    google_service_networking_connection.private_vpc_connection[0]
+  ]
+}
+
+resource "google_vpc_access_connector" "connector" {
+  count = length(var.gcp_vpc)
+  name          = "connector-${count.index}"
+  network       = google_compute_network.vpc[count.index].id
+  machine_type  = "e2-standard-4"
+  min_instances = 2
+  max_instances = 3
+  ip_cidr_range = "10.132.0.0/28"
+
+  depends_on = [
+    google_compute_network.vpc[0]
+  ]
 }
