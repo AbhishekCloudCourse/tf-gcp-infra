@@ -256,6 +256,7 @@ resource "google_storage_bucket_object" "archive" {
 
 
 resource "google_cloudfunctions2_function" "email-server" {
+  count = length(var.gcp_vpc)
   name        = "run-email-server"
   location    = "us-east1"
   description = "a new function"
@@ -279,12 +280,15 @@ resource "google_cloudfunctions2_function" "email-server" {
     timeout_seconds    = 60
     ingress_settings               = "ALLOW_INTERNAL_ONLY"
     all_traffic_on_latest_revision = true
-    service_account_email          = "562779682699-compute@developer.gserviceaccount.com"
+    service_account_email          = var.gcp_vpc[count.index].cloud_function_service_account_email
     environment_variables = {
         DB_PASSWORD = random_password.password.result
+        DB_NAME = var.gcp_vpc[count.index].database_name
+        DB_USERNAME = var.gcp_vpc[count.index].db_username
+        DB_HOST = google_sql_database_instance.instance[count.index].first_ip_address
     }
     vpc_connector = google_vpc_access_connector.connector[0].name
-     vpc_connector_egress_settings  = "PRIVATE_RANGES_ONLY"
+    vpc_connector_egress_settings  = "PRIVATE_RANGES_ONLY"
 
   }
 
@@ -299,19 +303,7 @@ resource "google_cloudfunctions2_function" "email-server" {
 
 }
 
-resource "google_compute_network_peering_routes_config" "peering_routes" {
-  count = length(var.gcp_vpc)
-  peering = google_service_networking_connection.private_vpc_connection[0].peering
-  network = google_compute_network.vpc[count.index].id
 
-  import_custom_routes = true
-  export_custom_routes = true
-
-  depends_on = [
-    google_compute_network.vpc[0],
-    google_service_networking_connection.private_vpc_connection[0]
-  ]
-}
 
 resource "google_vpc_access_connector" "connector" {
   count = length(var.gcp_vpc)
@@ -320,9 +312,10 @@ resource "google_vpc_access_connector" "connector" {
   machine_type  = "e2-standard-4"
   min_instances = 2
   max_instances = 3
-  ip_cidr_range = "10.132.0.0/28"
+  ip_cidr_range = var.gcp_vpc[count.index].connector_ipv4
 
   depends_on = [
     google_compute_network.vpc[0]
   ]
 }
+
