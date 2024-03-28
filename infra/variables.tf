@@ -30,6 +30,14 @@ variable "gcp_vpc" {
       db_username           = string
       database_name         = string
       sql_database_name     = string
+      connector_ipv4        = string
+      cloud_function_service_account_email = string
+      bucket_name = string
+      bucket_source = string
+      cloud_function_name = string
+      cloud_function_location = string
+      cloud_function_entypoint = string
+      cloud_function_version = string
     })
   )
 }
