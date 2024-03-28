@@ -247,10 +247,9 @@ resource "google_storage_bucket" "email-bucket" {
 }
 
 resource "google_storage_bucket_object" "archive" {
-  count = length(var.gcp_vpc)
-  name   = var.gcp_vpc[count.index].bucket_name
+  name   = "email-server.zip"
   bucket = google_storage_bucket.email-bucket.name
-  source = var.gcp_vpc[count.index].bucket_source
+  source = "C:\\Users\\abhis\\OneDrive\\Documents\\prep\\email-server.zip"
 }
 
 
@@ -258,18 +257,18 @@ resource "google_storage_bucket_object" "archive" {
 
 resource "google_cloudfunctions2_function" "email-server" {
   count = length(var.gcp_vpc)
-  name        = var.gcp_vpc[count.index].cloud_function_name
-  location    = var.gcp_vpc[count.index].cloud_function_location
+  name        = "run-email-server"
+  location    = "us-east1"
   description = "a new function"
 
   build_config {
-    runtime     = var.gcp_vpc[count.index].cloud_function_version
-    entry_point = var.gcp_vpc[count.index].cloud_function_entypoint # Set the entry point
+    runtime     = "nodejs16"
+    entry_point = "consumeUserMessage" # Set the entry point
  
     source {
       storage_source {
         bucket = google_storage_bucket.email-bucket.name
-        object = google_storage_bucket_object.archive[0].name
+        object = google_storage_bucket_object.archive.name
       }
     }
   }
@@ -319,4 +318,7 @@ resource "google_vpc_access_connector" "connector" {
     google_compute_network.vpc[0]
   ]
 }
+
+
+
 
