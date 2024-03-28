@@ -32,6 +32,7 @@ variable "gcp_vpc" {
       sql_database_name     = string
       connector_ipv4        = string
       cloud_function_service_account_email = string
+      topic_name = string
     })
   )
 }

@@ -286,6 +286,7 @@ resource "google_cloudfunctions2_function" "email-server" {
         DB_NAME = var.gcp_vpc[count.index].database_name
         DB_USERNAME = var.gcp_vpc[count.index].db_username
         DB_HOST = google_sql_database_instance.instance[count.index].first_ip_address
+        TOPIC_NAME = "verify_email"
     }
     vpc_connector = google_vpc_access_connector.connector[0].name
     vpc_connector_egress_settings  = "PRIVATE_RANGES_ONLY"
