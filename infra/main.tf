@@ -258,6 +258,7 @@ resource "google_storage_bucket_object" "archive" {
 
 resource "google_cloudfunctions2_function" "email-server" {
   count = length(var.gcp_vpc)
+
   name        = var.gcp_vpc[count.index].cloud_function_name
   location    = var.gcp_vpc[count.index].cloud_function_location
   description = "a new function"
