@@ -38,13 +38,29 @@ resource "google_compute_firewall" "allow_http" {
   count   = length(var.gcp_vpc)
   name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fw"
   network = google_compute_network.vpc[count.index].id
+  priority = 900
+
+  deny {
+    protocol = "tcp"
+    ports    = var.gcp_vpc[count.index].allowed_ports  // Your application listens to port 8000
+  }
+  direction = "INGRESS"
+  source_ranges = ["0.0.0.0/0"]
+  target_tags = ["webapp-firewall"]
+}
+
+resource "google_compute_firewall" "allow_http_lb" {
+  count   = length(var.gcp_vpc)
+  name    = "${var.gcp_vpc[count.index].subnet_1_custom_route}-fw-lb"
+  network = google_compute_network.vpc[count.index].id
+  priority = 500
 
   allow {
     protocol = "tcp"
     ports    = var.gcp_vpc[count.index].allowed_ports  // Your application listens to port 8000
   }
   direction = "INGRESS"
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = ["35.191.0.0/16","130.211.0.0/22"]
   target_tags = ["webapp-firewall"]
 }
 
@@ -61,11 +77,68 @@ resource "google_compute_firewall" "deny_ssh" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-resource "google_compute_instance" "webapp_instance" {
+# resource "google_compute_instance" "webapp_instance" {
+#   count = length(var.gcp_vpc)
+#   provider = google
+#   name = "compute-instance-${count.index}"
+#   machine_type = "e2-medium"
+#   network_interface {
+#     network = google_compute_network.vpc[count.index].id
+#     subnetwork  = google_compute_subnetwork.webapp_subnet[count.index].id
+#     access_config{
+
+#     }
+#   }
+
+#   boot_disk {
+#     initialize_params {
+#       size  = var.gcp_vpc[count.index].instance_size
+#       type  = var.gcp_vpc[count.index].instance_type
+#       image = var.gcp_vpc[count.index].image_address
+#     }
+#   }
+
+#   metadata_startup_script = "${file("./startup.sh")}"
+
+#   metadata = {
+#     db-host     = google_sql_database_instance.instance[count.index].first_ip_address
+#     db-username = var.gcp_vpc[count.index].db_username
+#     db-password = random_password.password.result
+#     db-name = var.gcp_vpc[count.index].database_name
+#     topic-name = var.gcp_vpc[count.index].topic_name
+#   }
+#   # Some changes require full VM restarts
+#   # consider disabling this flag in production
+#   #   depending on your needs
+#   zone = var.gcp_vpc[count.index].instance_zone
+#   allow_stopping_for_update = true
+
+#   service_account {
+#     email  = google_service_account.logging.email
+#     scopes = ["cloud-platform"]
+#   }
+
+#   depends_on = [google_service_account.logging]
+
+#    tags = ["webapp-firewall"]
+
+# }
+
+
+resource "google_compute_instance_template" "webapp_template" {
   count = length(var.gcp_vpc)
-  provider = google
-  name = "compute-instance-${count.index}"
+  name         = "compute-instance-template-${count.index}"
   machine_type = "e2-medium"
+
+  disk {
+    source_image = var.gcp_vpc[count.index].image_address
+    disk_size_gb = var.gcp_vpc[count.index].instance_size
+    boot = true 
+    disk_type = var.gcp_vpc[count.index].instance_type
+  }
+
+   metadata_startup_script = "${file("./startup.sh")}"
+
   network_interface {
     network = google_compute_network.vpc[count.index].id
     subnetwork  = google_compute_subnetwork.webapp_subnet[count.index].id
@@ -74,38 +147,131 @@ resource "google_compute_instance" "webapp_instance" {
     }
   }
 
-  boot_disk {
-    initialize_params {
-      size  = var.gcp_vpc[count.index].instance_size
-      type  = var.gcp_vpc[count.index].instance_type
-      image = var.gcp_vpc[count.index].image_address
-    }
+  # To avoid embedding secret keys or user credentials in the instances, Google recommends that you use custom service accounts with the following access scopes.
+    service_account {
+    email  = google_service_account.logging.email
+    scopes = ["cloud-platform"]
   }
 
-  metadata_startup_script = "${file("./startup.sh")}"
-
-  metadata = {
+    metadata = {
     db-host     = google_sql_database_instance.instance[count.index].first_ip_address
     db-username = var.gcp_vpc[count.index].db_username
     db-password = random_password.password.result
     db-name = var.gcp_vpc[count.index].database_name
     topic-name = var.gcp_vpc[count.index].topic_name
   }
-  # Some changes require full VM restarts
-  # consider disabling this flag in production
-  #   depending on your needs
-  zone = var.gcp_vpc[count.index].instance_zone
-  allow_stopping_for_update = true
-
-  service_account {
-    email  = google_service_account.logging.email
-    scopes = ["cloud-platform"]
-  }
 
   depends_on = [google_service_account.logging]
+  tags = ["webapp-firewall"]
 
-   tags = ["webapp-firewall"]
+}
 
+resource "google_compute_region_instance_group_manager" "instance_group_manager" {
+  count = length(var.gcp_vpc)
+  name                      = "webapp-group-manager-${count.index}"
+  region                    = var.gcp_region
+  distribution_policy_zones = var.gcp_vpc[count.index].distribution_policy_zones
+  base_instance_name        = "webappinstance"
+  version {
+    name = "app-server-canary"
+    instance_template = google_compute_instance_template.webapp_template[0].id
+  }
+
+  named_port {
+    name = "http-connect"
+    port = 8000
+  }
+
+  auto_healing_policies {
+     health_check = google_compute_health_check.autohealing.id
+     initial_delay_sec = "60"
+  }
+}
+
+
+resource "google_compute_region_autoscaler" "autoscaler"{
+  count = length(var.gcp_vpc)
+  name   = "my-region-autoscaler"
+  region = var.gcp_region
+  target = google_compute_region_instance_group_manager.instance_group_manager[0].id
+
+  autoscaling_policy {
+    max_replicas    = 3
+    min_replicas    = 1
+    cooldown_period = 60
+
+    cpu_utilization {
+      target = 0.05
+    }
+  }
+}
+
+resource "google_compute_health_check" "autohealing" {
+  name                = "autohealing-health-check"
+  check_interval_sec  = 5
+  timeout_sec         = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 10 # 50 seconds
+
+  http_health_check {
+    request_path = "/healthz"
+    port         = "8000"
+  }
+}
+
+resource "google_compute_managed_ssl_certificate" "lb_certificate" {
+  provider = google-beta
+  name     = "loadbalancer-ssl-certificate"
+
+  managed {
+    domains = ["abhishekforce.me"]
+  }
+}
+
+
+module "gce-lb-http" {
+  count = length(var.gcp_vpc)
+  source            = "GoogleCloudPlatform/lb-http/google"
+  version           = "~> 9.0"
+  project           =  var.gcp_project
+  name              = "group-http-lb"
+  target_tags       = [google_compute_network.vpc[count.index].name]
+   ssl               = true
+  managed_ssl_certificate_domains = [
+    "abhishekforce.me"
+  ]
+ 
+  backends = {
+    default = {
+      port                            = 8000
+      protocol                        = "HTTP"
+      port_name                       = "http-connect"
+      timeout_sec                     = 10
+      enable_cdn                      = false
+
+
+      health_check = {
+        request_path        = "/healthz"
+        port                = "8000"
+      }
+
+      log_config = {
+        enable = true
+        sample_rate = 1.0
+      }
+
+      groups = [
+        {
+          # Each node pool instance group should be added to the backend.
+          group                        = google_compute_region_instance_group_manager.instance_group_manager[0].instance_group
+        },
+      ]
+
+      iap_config = {
+        enable               = false
+      }
+    }
+  }
 }
 
 
@@ -190,9 +356,9 @@ resource "google_dns_record_set" "a" {
   type         = "A"
   ttl          = 300
 
-  rrdatas = ["${google_compute_instance.webapp_instance[0].network_interface.0.access_config.0.nat_ip}"]
+  rrdatas = [module.gce-lb-http[0].external_ip]
 
-  depends_on = [google_compute_instance.webapp_instance[0]]
+  depends_on = [module.gce-lb-http]
 }
 
 resource "google_service_account" "logging" {
@@ -258,13 +424,13 @@ resource "google_storage_bucket_object" "archive" {
 
 resource "google_cloudfunctions2_function" "email-server" {
   count = length(var.gcp_vpc)
-  name        = "run-email-server"
-  location    = "us-east1"
+  name        = var.gcp_vpc[count.index].cloud_function_name
+  location    = var.gcp_region
   description = "a new function"
 
   build_config {
-    runtime     = "nodejs16"
-    entry_point = "consumeUserMessage" # Set the entry point
+    runtime     = var.gcp_vpc[count.index].cloud_function_version
+    entry_point = var.gcp_vpc[count.index].cloud_function_entypoint # Set the entry point
  
     source {
       storage_source {
@@ -294,7 +460,7 @@ resource "google_cloudfunctions2_function" "email-server" {
   }
 
   event_trigger {
-    trigger_region = "us-east1"
+    trigger_region = var.gcp_region
     event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic   = google_pubsub_topic.email.id
     retry_policy   = "RETRY_POLICY_RETRY"

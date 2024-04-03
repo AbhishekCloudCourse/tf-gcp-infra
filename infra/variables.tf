@@ -33,6 +33,12 @@ variable "gcp_vpc" {
       connector_ipv4        = string
       cloud_function_service_account_email = string
       topic_name = string
+      bucket_name = string
+      bucket_source = string
+      cloud_function_name = string
+      cloud_function_entypoint = string
+      cloud_function_version = string
+      distribution_policy_zones = list(string)
     })
   )
 }
