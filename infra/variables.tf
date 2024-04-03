@@ -18,7 +18,7 @@ variable "bucket_path"{
 variable "gcp_vpc" {
   type = list(
     object({
-      name                  = string
+      name                  =  string
       routing_mode          = string
       subnet_name_1         = string
       subnet_1_cidr         = string
