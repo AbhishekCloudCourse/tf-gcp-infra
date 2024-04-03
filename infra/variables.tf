@@ -11,6 +11,10 @@ variable "gcp_region"{
     
 }
 
+variable "bucket_path"{
+
+}
+
 variable "gcp_vpc" {
   type = list(
     object({
@@ -39,6 +43,8 @@ variable "gcp_vpc" {
       cloud_function_entypoint = string
       cloud_function_version = string
       distribution_policy_zones = list(string)
+      max_replica = number
+      min_replica = number
     })
   )
 }
