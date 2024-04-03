@@ -196,8 +196,8 @@ resource "google_compute_region_autoscaler" "autoscaler"{
   target = google_compute_region_instance_group_manager.instance_group_manager[0].id
 
   autoscaling_policy {
-    max_replicas    = 3
-    min_replicas    = 1
+    max_replicas    = var.gcp_vpc[count.index].max_replica
+    min_replicas    = var.gcp_vpc[count.index].min_replica
     cooldown_period = 60
 
     cpu_utilization {
@@ -416,7 +416,7 @@ resource "google_storage_bucket" "email-bucket" {
 resource "google_storage_bucket_object" "archive" {
   name   = "email-server.zip"
   bucket = google_storage_bucket.email-bucket.name
-  source = "C:\\Users\\abhis\\OneDrive\\Documents\\prep\\email-server.zip"
+  source = var.bucket_path
 }
 
 
