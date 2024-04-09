@@ -77,7 +77,14 @@ resource "google_compute_firewall" "deny_ssh" {
   source_ranges = ["0.0.0.0/0"]
 }
 
+resource "google_kms_crypto_key_iam_binding" "crypto_key_bucket_iam" {
+  crypto_key_id = google_kms_crypto_key.bucket_key.self_link
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
 
+  members = [
+    "serviceAccount:${google_service_account.logging.email}"
+  ]
+}
 resource "google_compute_instance_template" "webapp_template" {
   count = length(var.gcp_vpc)
   name         = "compute-instance-template-${count.index}"
@@ -88,6 +95,9 @@ resource "google_compute_instance_template" "webapp_template" {
     disk_size_gb = var.gcp_vpc[count.index].instance_size
     boot = true 
     disk_type = var.gcp_vpc[count.index].instance_type
+     disk_encryption_key {
+      kms_key_self_link = google_kms_crypto_key.ce_key.self_link
+    }
   }
 
    metadata_startup_script = "${file("./startup.sh")}"
