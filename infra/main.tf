@@ -227,6 +227,44 @@ module "gce-lb-http" {
   }
 }
 
+resource "random_id" "keyring_id" {
+  byte_length = 8
+}
+
+resource "random_id" "crypto_key_ce" {
+  byte_length = 8
+}
+
+resource "random_id" "crypto_key_bucket" {
+  byte_length = 8
+}
+
+resource "random_id" "crypto_key_sql" {
+  byte_length = 8
+}
+
+resource "google_kms_key_ring" "keyring" {
+  name     = "keyring-${random_id.keyring_id.hex}"
+  location = "us-east1"
+}
+
+resource "google_kms_crypto_key" "ce_key" {
+  name            = "crypto-key-${random_id.crypto_key_ce.hex}"
+  key_ring        = google_kms_key_ring.keyring.id
+  rotation_period = "2592000s"
+}
+
+resource "google_kms_crypto_key" "bucket_key" {
+  name            = "crypto-key-${random_id.crypto_key_ce.hex}"
+  key_ring        = google_kms_key_ring.keyring.id
+  rotation_period = "2592000s"
+}
+
+resource "google_kms_crypto_key" "sql_key" {
+  name            = "crypto-key-${random_id.crypto_key_ce.hex}"
+  key_ring        = google_kms_key_ring.keyring.id
+  rotation_period = "2592000s"
+}
 
 resource "google_compute_global_address" "compute_address" {
   count = length(var.gcp_vpc)
@@ -363,7 +401,19 @@ resource "google_storage_bucket" "email-bucket" {
   name     = "bucket-3fa85f64-5717-4562-b3fc-2c963f66afa6-1629479812345"
   location = "US"
   force_destroy = true
+  depends_on = [google_kms_crypto_key_iam_binding.crypto_key_bucket_iam]
 
+}
+
+data "google_storage_project_service_account" "gcs_account" {}
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key_bucket_iam" {
+  crypto_key_id = google_kms_crypto_key.bucket_key.self_link
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = [
+    "serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"
+  ]
 }
 
 resource "google_storage_bucket_object" "archive" {
