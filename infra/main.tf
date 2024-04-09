@@ -77,53 +77,6 @@ resource "google_compute_firewall" "deny_ssh" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-# resource "google_compute_instance" "webapp_instance" {
-#   count = length(var.gcp_vpc)
-#   provider = google
-#   name = "compute-instance-${count.index}"
-#   machine_type = "e2-medium"
-#   network_interface {
-#     network = google_compute_network.vpc[count.index].id
-#     subnetwork  = google_compute_subnetwork.webapp_subnet[count.index].id
-#     access_config{
-
-#     }
-#   }
-
-#   boot_disk {
-#     initialize_params {
-#       size  = var.gcp_vpc[count.index].instance_size
-#       type  = var.gcp_vpc[count.index].instance_type
-#       image = var.gcp_vpc[count.index].image_address
-#     }
-#   }
-
-#   metadata_startup_script = "${file("./startup.sh")}"
-
-#   metadata = {
-#     db-host     = google_sql_database_instance.instance[count.index].first_ip_address
-#     db-username = var.gcp_vpc[count.index].db_username
-#     db-password = random_password.password.result
-#     db-name = var.gcp_vpc[count.index].database_name
-#     topic-name = var.gcp_vpc[count.index].topic_name
-#   }
-#   # Some changes require full VM restarts
-#   # consider disabling this flag in production
-#   #   depending on your needs
-#   zone = var.gcp_vpc[count.index].instance_zone
-#   allow_stopping_for_update = true
-
-#   service_account {
-#     email  = google_service_account.logging.email
-#     scopes = ["cloud-platform"]
-#   }
-
-#   depends_on = [google_service_account.logging]
-
-#    tags = ["webapp-firewall"]
-
-# }
-
 
 resource "google_compute_instance_template" "webapp_template" {
   count = length(var.gcp_vpc)
