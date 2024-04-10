@@ -282,6 +282,7 @@ resource "google_kms_crypto_key" "ce_key" {
 }
 
 resource "google_kms_crypto_key" "bucket_key" {
+
   name            = "crypto-key-bucket-${random_string.crypto_key_bucket.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
