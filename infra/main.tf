@@ -77,14 +77,22 @@ resource "google_compute_firewall" "deny_ssh" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-resource "google_kms_crypto_key_iam_binding" "crypto_key_bucket_iam" {
-  crypto_key_id = google_kms_crypto_key.bucket_key.self_link
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+data "google_project" "current" {
+}
 
+locals {
+  cloud_vm_service_account = "service-${data.google_project.current.number}@compute-system.iam.gserviceaccount.com"
+}
+resource "google_kms_crypto_key_iam_binding" "vm_crypto_key_binding" {
+  crypto_key_id = google_kms_crypto_key.ce_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   members = [
-    "serviceAccount:${google_service_account.logging.email}"
+    "serviceAccount:${local.cloud_vm_service_account}",
   ]
 }
+
+
+
 resource "google_compute_instance_template" "webapp_template" {
   count = length(var.gcp_vpc)
   name         = "compute-instance-template-${count.index}"
@@ -96,7 +104,7 @@ resource "google_compute_instance_template" "webapp_template" {
     boot = true 
     disk_type = var.gcp_vpc[count.index].instance_type
      disk_encryption_key {
-      kms_key_self_link = google_kms_crypto_key.ce_key.self_link
+      kms_key_self_link = google_kms_crypto_key.ce_key.id
     }
   }
 
@@ -237,43 +245,54 @@ module "gce-lb-http" {
   }
 }
 
-resource "random_id" "keyring_id" {
-  byte_length = 8
+resource "random_string" "keyring_id" {
+  length = 8
+  special = false
 }
 
-resource "random_id" "crypto_key_ce" {
-  byte_length = 8
+resource "random_string" "crypto_key_ce" {
+  length = 8
+  special = false
 }
 
-resource "random_id" "crypto_key_bucket" {
-  byte_length = 8
+resource "random_string" "crypto_key_bucket" {
+  length = 8
+  special = false
 }
 
-resource "random_id" "crypto_key_sql" {
-  byte_length = 8
+resource "random_string" "crypto_key_sql" {
+  length = 8
+  special = false
 }
 
 resource "google_kms_key_ring" "keyring" {
-  name     = "keyring-${random_id.keyring_id.hex}"
+  name     = "keyring-${random_string.keyring_id.result}"
   location = "us-east1"
+  project = var.gcp_project
 }
 
+
 resource "google_kms_crypto_key" "ce_key" {
-  name            = "crypto-key-${random_id.crypto_key_ce.hex}"
+  name            = "crypto-key-${random_string.crypto_key_ce.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
+
+  depends_on = [google_kms_key_ring.keyring]
+
 }
 
 resource "google_kms_crypto_key" "bucket_key" {
-  name            = "crypto-key-${random_id.crypto_key_ce.hex}"
+  name            = "crypto-key-${random_string.crypto_key_bucket.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
+  depends_on = [google_kms_key_ring.keyring]
 }
 
 resource "google_kms_crypto_key" "sql_key" {
-  name            = "crypto-key-${random_id.crypto_key_ce.hex}"
+  name            = "crypto-key-${random_string.crypto_key_sql.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
+  depends_on = [google_kms_key_ring.keyring]
 }
 
 resource "google_compute_global_address" "compute_address" {
@@ -307,11 +326,29 @@ resource "random_id" "db_name_suffix" {
   byte_length = 4
 }
 
+resource "google_project_service_identity" "gcp_sa_cloud_sql" {
+  provider   = google-beta
+  service    = "sqladmin.googleapis.com"
+  depends_on = [google_kms_key_ring.keyring]
+}
+
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key_binding" {
+  provider      = google
+  crypto_key_id = google_kms_crypto_key.sql_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  members = [
+    "serviceAccount:${google_project_service_identity.gcp_sa_cloud_sql.email}",
+  ]
+}
+
+
+
 resource "google_sql_database_instance" "instance" {
   provider = google-beta
   count = length(var.gcp_vpc)
   name             = var.gcp_vpc[count.index].sql_database_name
-  region           = "us-central1"
+  region           = "us-east1"
   database_version = "POSTGRES_15"
   deletion_protection = false
   depends_on = [google_service_networking_connection.private_vpc_connection[0]]
@@ -327,7 +364,8 @@ resource "google_sql_database_instance" "instance" {
     disk_type = "PD_SSD"
     availability_type = "REGIONAL"
   }
-  
+
+   encryption_key_name = google_kms_crypto_key.sql_key.id
 
 }
 
@@ -362,6 +400,49 @@ resource "google_dns_record_set" "a" {
   depends_on = [module.gce-lb-http]
 }
 
+resource "google_dns_record_set" "spf" {
+  count        = length(var.gcp_vpc)
+  name         = "abhishekforce.me."
+  managed_zone = "abhishekforce" # Replace with your actual managed zone name
+  type         = "TXT"
+  ttl          = 300
+
+  rrdatas = ["\"v=spf1 include:sendgrid.net -all\""]
+}
+
+resource "google_dns_record_set" "s1_domainkey" {
+  name         = "s1._domainkey.abhishekforce.me."
+  managed_zone = "abhishekforce"
+  type         = "CNAME"
+  ttl          = 300
+  rrdatas      = ["s1.domainkey.u43038719.wl220.sendgrid.net."]
+}
+
+resource "google_dns_record_set" "s2_domainkey" {
+  name         = "s2._domainkey.abhishekforce.me."
+  managed_zone = "abhishekforce"
+  type         = "CNAME"
+  ttl          = 300
+  rrdatas      = ["s2.domainkey.u43038719.wl220.sendgrid.net."]
+}
+
+resource "google_dns_record_set" "s3_domainkey" {
+  name         = "em4258.abhishekforce.me."
+  managed_zone = "abhishekforce"
+  type         = "CNAME"
+  ttl          = 300
+  rrdatas      = ["u43038719.wl220.sendgrid.net."]
+}
+
+resource "google_dns_record_set" "spf2" {
+  name         = "_dmarc.abhishekforce.me."
+  managed_zone = "abhishekforce"
+  type         = "TXT"
+  ttl          = 300
+
+  rrdatas = ["v=DMARC1; p=none;"]
+}
+
 resource "google_service_account" "logging" {
   account_id   = "logging-service-account"
   display_name = "Logging Service Account"
@@ -383,10 +464,12 @@ resource "google_project_iam_member" "member2" {
   member  = "serviceAccount:${google_service_account.logging.email}"
 }
 
+
+
 resource "google_project_iam_binding" "pubsub_publisher" {
   count   = length(var.gcp_vpc)
   project = google_compute_network.vpc[count.index].project
-  role    = "roles/pubsub.publisher"
+  role    = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   members = [
     "serviceAccount:${google_service_account.logging.email}"
   ]
@@ -407,24 +490,29 @@ resource "random_string" "string-generator" {
   special          = false
 }
 
-resource "google_storage_bucket" "email-bucket" {
-  name     = "bucket-3fa85f64-5717-4562-b3fc-2c963f66afa6-1629479812345"
-  location = "US"
-  force_destroy = true
-  depends_on = [google_kms_crypto_key_iam_binding.crypto_key_bucket_iam]
 
+locals {
+  cloud_storage_service_account = "service-${data.google_project.current.number}@gs-project-accounts.iam.gserviceaccount.com"
 }
 
-data "google_storage_project_service_account" "gcs_account" {}
-
 resource "google_kms_crypto_key_iam_binding" "crypto_key_bucket_iam" {
-  crypto_key_id = google_kms_crypto_key.bucket_key.self_link
+  crypto_key_id = google_kms_crypto_key.bucket_key.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
 
   members = [
-    "serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"
+    "serviceAccount:${local.cloud_storage_service_account}"
   ]
 }
+resource "google_storage_bucket" "email-bucket" {
+  name     = "bucket-3fa85f64-5717-4562-b3fc-2c963f66afa6-1629479812345"
+  location = "us-east1"
+  force_destroy = true
+  encryption {
+     default_kms_key_name = google_kms_crypto_key.bucket_key.id
+  }
+  
+}
+
 
 resource "google_storage_bucket_object" "archive" {
   name   = "email-server.zip"
