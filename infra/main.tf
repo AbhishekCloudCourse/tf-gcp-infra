@@ -273,7 +273,7 @@ resource "google_kms_key_ring" "keyring" {
 
 
 resource "google_kms_crypto_key" "ce_key" {
-  name            = "crypto-key-${random_string.crypto_key_ce.result}"
+  name            = "crypto-key-ce-${random_string.crypto_key_ce.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
 
@@ -282,14 +282,15 @@ resource "google_kms_crypto_key" "ce_key" {
 }
 
 resource "google_kms_crypto_key" "bucket_key" {
-  name            = "crypto-key-${random_string.crypto_key_bucket.result}"
+
+  name            = "crypto-key-bucket-${random_string.crypto_key_bucket.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
   depends_on = [google_kms_key_ring.keyring]
 }
 
 resource "google_kms_crypto_key" "sql_key" {
-  name            = "crypto-key-${random_string.crypto_key_sql.result}"
+  name            = "crypto-key-sql${random_string.crypto_key_sql.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
   depends_on = [google_kms_key_ring.keyring]
