@@ -169,7 +169,7 @@ resource "google_compute_region_autoscaler" "autoscaler"{
   autoscaling_policy {
     max_replicas    = var.gcp_vpc[count.index].max_replica
     min_replicas    = var.gcp_vpc[count.index].min_replica
-    cooldown_period = 60
+    cooldown_period = var.gcp_vpc[count.index].cool_down_period
 
     cpu_utilization {
       target = 0.05

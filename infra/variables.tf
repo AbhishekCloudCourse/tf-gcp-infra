@@ -45,6 +45,7 @@ variable "gcp_vpc" {
       distribution_policy_zones = list(string)
       max_replica = number
       min_replica = number
+      cool_down_period = number 
     })
   )
 }
