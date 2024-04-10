@@ -282,6 +282,7 @@ resource "google_kms_crypto_key" "ce_key" {
 }
 
 resource "google_kms_crypto_key" "bucket_key" {
+
   name            = "crypto-key-bucket-${random_string.crypto_key_bucket.result}"
   key_ring        = google_kms_key_ring.keyring.id
   rotation_period = "2592000s"
@@ -507,9 +508,9 @@ resource "google_storage_bucket" "email-bucket" {
   name     = "bucket-3fa85f64-5717-4562-b3fc-2c963f66afa6-1629479812345"
   location = "us-east1"
   force_destroy = true
-  # encryption {
-  #    default_kms_key_name = google_kms_crypto_key.bucket_key.id
-  # }
+  encryption {
+     default_kms_key_name = google_kms_crypto_key.bucket_key.id
+  }
   
 }
 
